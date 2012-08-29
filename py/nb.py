@@ -52,7 +52,7 @@ def search(query, index):
     return refine_search(query[1:], index, set([t[1] for t in index[query[0]]]))
 
 def latest_n_entries(index, n):
-    return sorted(list(set(sum([[t[1] for t in w] for w in index.values()], []))))[:n]
+    return sorted(list(set(sum([[t[1] for t in w] for w in index.values()], []))))[::-1][:n]
 
 def refine_search(query, index, result):
     if len(query) == 0:
@@ -62,7 +62,7 @@ def refine_search(query, index, result):
     return refine_search(query[1:], index, result.intersection([t[1] for t in index[query[0]]]))
 
 def load_results(results):
-    results = sorted(list(results))
+    results = sorted(list(results))[::-1]
     r2 = []
     for n in results:
         path = os.path.join(nb_notes_dir(), "notes", n)
