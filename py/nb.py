@@ -188,7 +188,7 @@ def ui():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        text = " ".join(sys.argv[1:]).encode('utf-8')
+        text = " ".join(sys.argv[1:])
         mk_note(text, load_index())
     else:
         ui()
