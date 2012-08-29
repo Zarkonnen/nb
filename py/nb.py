@@ -27,7 +27,7 @@ def edit_note(name, index):
     pass
 
 def search(query, index):
-    query = query.split(" ")
+    query = [x for x in query.split(" ") if len(x) > 0]
     if len(query) == 0 or not query[0] in index:
         return set()
     return refine_search(query[1:], index, set([t[1] for t in index[query[0]]]))
@@ -74,39 +74,111 @@ def ui():
         index = load_index()
         query = ""
         cursor = 0
+        selection = 0
         curses.noecho()
         curses.cbreak()
         stdscr.keypad(1)
+        first = True
         
         while True:
-            old_q = query
-            x = stdscr.getch()
-            if x > 0 and x < 256 and chr(x) in string.printable:
-                query = query[:cursor] + chr(x) + query[cursor:]
-                cursor += 1
-            elif x == curses.KEY_LEFT:
-                cursor = max(0, cursor - 1)
-            elif x == curses.KEY_RIGHT:
-                cursor = min(len(query), cursor + 1)
-            elif (x == curses.KEY_BACKSPACE or x == 127) and cursor > 0:
-                query = query[:cursor - 1] + query[cursor:]
-                cursor = cursor - 1
-            elif x == curses.KEY_EXIT or x == 27:
-                return
-            else:
-                continue
+            if not first:
+                c = stdscr.getch()
+                if c > 0 and c < 256 and chr(c) in string.printable:
+                    query = query[:cursor] + chr(c) + query[cursor:]
+                    cursor += 1
+                elif c == curses.KEY_LEFT:
+                    cursor = max(0, cursor - 1)
+                elif c == curses.KEY_RIGHT:
+                    cursor = min(len(query), cursor + 1)
+                elif c == curses.KEY_UP:
+                    selection = max(0, selection - 1)
+                elif c == curses.KEY_DOWN:
+                    selection += 1
+                elif (c == curses.KEY_BACKSPACE or c == 127) and cursor > 0:
+                    query = query[:cursor - 1] + query[cursor:]
+                    cursor = cursor - 1
+                elif c == curses.KEY_EXIT or c == 27:
+                    return
+                else:
+                    continue
+                    
+            first = False
+            height, width = stdscr.getmaxyx()
             stdscr.clear()
-            stdscr.addstr(0, 0, query)
+            stdscr.addstr(0, 2, query)
             
-            offset = 1
+            element = 0
+            if selection == element:
+                stdscr.addstr(0, selection, ">", curses.A_REVERSE)
+            
+            y = 1
+            element += 1
+            query_bits = query.split(" ")
             for n in sorted(list(search(query, index))):
                 path = os.path.join(nb_notes_dir(), "notes", n)
                 if os.path.exists(path):
                     with open(path, 'r') as f:
-                        stdscr.addstr(offset, 0, f.read())
-                    offset += 1
+                        t = f.read().split(" ")
+                        t_joined = " ".join(t)
+                        if selection == element:
+                            x = 2
+                            t_index = 0
+                            stdscr.addstr(y, 0, " ", curses.A_REVERSE)
+                            while t_index < len(t):
+                                if x > 2 and x + len(t[t_index]) + 1 >= width:
+                                    x = 2
+                                    y += 1
+                                    stdscr.addstr(y, 0, " ", curses.A_REVERSE)
+                                if t[t_index] in query_bits:
+                                    stdscr.addstr(y, x, t[t_index], curses.A_BOLD)
+                                else:
+                                    stdscr.addstr(y, x, t[t_index])
+                                x += len(t[t_index]) + 1
+                                t_index += 1
+                        else:
+                            # Show excerpt.
+                            x = 2
+                            t_index = 0
+                            # Find first highlighted word.
+                            if len(t_joined) > width:
+                                while t_index < len(t):
+                                    if t[t_index] in query_bits:
+                                        break
+                                    t_index += 1
+                                if t_index == len(t):
+                                    t_index = 0
+                                else:
+                                    # Shift window leftwards for better ctx.
+                                    end = len(t[t_index])
+                                    while t_index > 0 and end + 1 + len(t[t_index - 1]) < width * 3 / 4:
+                                        end += 1 + len(t[t_index - 1])
+                                        t_index -= 1
+                            start_index = t_index
+                            while t_index < len(t) and x + len(t[t_index]) < width:
+                                if t[t_index] in query_bits:
+                                    stdscr.addstr(y, x, t[t_index], curses.A_BOLD)
+                                else:
+                                    stdscr.addstr(y, x, t[t_index])
+                                x += len(t[t_index]) + 1
+                                t_index += 1
+                            if t_index < len(t):
+                                stdscr.addstr(y, width - 3, "...")
+                            if start_index > 0:
+                                stdscr.addstr(y, 2, "...")
+                        
+                    y += 1
+                    element += 1
             
-            stdscr.move(0, cursor)
+            # Help
+            if selection == 0:
+                if len(query) == 0:
+                    stdscr.addstr(height - 2, 0, "Type to search or make new note. Press esc to exit.", curses.A_REVERSE)
+                else:
+                    stdscr.addstr(height - 2, 0, "Press enter to make new note or up/down arrow keys to select entries.", curses.A_REVERSE)
+            else:
+                stdscr.addstr(height - 2, 0, "Use arrow keys to select entries. Press enter to edit or esc to exit.", curses.A_REVERSE)
+            
+            stdscr.move(0, cursor + 2)
             stdscr.refresh()
     finally:
         curses.nocbreak()
