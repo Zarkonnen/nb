@@ -23,8 +23,23 @@ def mk_note(text, index):
     add_to_index(text, name, index)
     save_index(index)
 
-def edit_note(name, index):
-    pass
+def editor_cmd():
+    ed = os.getenv("NB_NOTES_EDITOR")
+    if ed:
+        return ed
+    ed = os.getenv("EDITOR")
+    if ed:
+        return ed
+    return "vi"
+
+def edit_note(n, index):
+    path = os.path.join(nb_notes_dir(), "notes", n)
+    if os.path.exists(path):
+        remove_from_index(n, index)
+        os.system(editor_cmd() + " " + path)
+        with open(path, 'r') as f:
+            add_to_index(f.read(), n, index)
+            save_index(index)
 
 def search(query, index):
     query = [x for x in query.split(" ") if len(x) > 0]
@@ -82,13 +97,13 @@ def save_index(index):
     with open(index_f, 'wb') as f:
         cPickle.dump(index, f)
 
-def ui():
+def ui(query=""):
     import curses, string
     stdscr = curses.initscr()
     try:
+        results = []
         index = load_index()
-        query = ""
-        cursor = 0
+        cursor = len(query)
         selection = 0
         curses.noecho()
         curses.cbreak()
@@ -98,9 +113,22 @@ def ui():
         while True:
             if not first:
                 c = stdscr.getch()
-                if c == curses.KEY_ENTER or c == 10 or c == 13 and len(query) > 0:
-                    mk_note(query, index)
-                    return
+                if c == curses.KEY_ENTER or c == 10 or c == 13:
+                    if selection == 0:
+                        if len(query) > 0:
+                            mk_note(query, index)
+                            return
+                    else:
+                        if selection - 1 < len(results):
+                            curses.nocbreak()
+                            stdscr.keypad(0)
+                            curses.echo()
+                            curses.endwin()
+                            edit_note(results[selection - 1][0], index)
+                            stdscr = curses.initscr()
+                            curses.noecho()
+                            curses.cbreak()
+                            stdscr.keypad(1)
                 elif c > 0 and c < 256 and chr(c) in string.printable:
                     query = query[:cursor] + chr(c) + query[cursor:]
                     cursor += 1
@@ -112,7 +140,7 @@ def ui():
                     selection = max(0, selection - 1)
                 elif c == curses.KEY_DOWN:
                     selection += 1
-                elif (c == curses.KEY_BACKSPACE or c == 127) and cursor > 0:
+                elif (c == curses.KEY_BACKSPACE or c == 127 or c == 8) and cursor > 0:
                     query = query[:cursor - 1] + query[cursor:]
                     cursor = cursor - 1
                 elif c == curses.KEY_EXIT or c == 27:
@@ -205,7 +233,15 @@ def ui():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        text = " ".join(sys.argv[1:])
-        mk_note(text, load_index())
+        if sys.argv[1] == "-s" or sys.argv[1] == "--search":
+            ui(" ".join(sys.argv[2:]))
+        elif sys.argv[1] == "-h" or sys.argv[1] == "--help":
+            print (
+"""nb is a very simple note-taking program.
+'nb <some text>' to make a note.
+'nb' to list, search, and edit notes.
+'nb -s|--search <query>' to start out with a query.""")
+        else:
+            mk_note(" ".join(sys.argv[1:]), load_index())
     else:
         ui()
