@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import os, sys, datetime, hashlib, cPickle
 
 def nb_notes_dir():
