@@ -1,6 +1,18 @@
 #!/usr/bin/env python
 
-import os, sys, datetime, hashlib, cPickle
+import os, sys, datetime, hashlib, cPickle, string
+
+def lex(text):
+    t_start = 0
+    t_end = 0
+    while t_end < len(text):
+        if text[t_end] in string.whitespace or text[t_end] in string.punctuation:
+            if t_start != t_end:
+                yield (text[t_start:t_end].lower(), t_start)
+            t_start = t_end + 1
+        t_end += 1
+    if t_start != t_end:
+        yield (text[t_start:t_end].lower(), t_start)
 
 def nb_notes_dir():
     notes_dir = os.getenv("NB_NOTES_DIR")
@@ -50,7 +62,7 @@ def delete_note(n, index):
         os.remove(path)
 
 def search(query, index):
-    query = [x for x in query.split(" ") if len(x) > 0]
+    query = [x.lower() for x in query.split(" ") if len(x) > 0]
     if len(query) == 0:
         return latest_n_entries(index, 30)
     if not query[0] in index:
@@ -78,12 +90,10 @@ def load_results(results):
     return r2
     
 def add_to_index(text, f_name, index):
-    offset = 0
-    for word in text.split(" "):
+    for word, offset in lex(text):
         if not word in index:
             index[word] = []
         index[word].append((offset, f_name))
-        offset += len(word) + 1
 
 def remove_from_index(f_name, index):
     for word in index.keys():
@@ -105,8 +115,20 @@ def save_index(index):
     with open(index_f, 'wb') as f:
         cPickle.dump(index, f)
 
+def re_index():
+    index = {}
+    nd = os.path.join(nb_notes_dir(), "notes")
+    if not os.path.exists(nd):
+        os.makedirs(nd)
+    for f_name in os.listdir(nd):
+        if f_name[0] == ".":
+            continue
+        with open(os.path.join(nd, f_name), 'r') as f:
+            add_to_index(f.read(), f_name, index)
+    return index
+
 def ui(query=""):
-    import curses, string
+    import curses
     stdscr = curses.initscr()
     try:
         results = []
@@ -255,14 +277,17 @@ def ui(query=""):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        if sys.argv[1] == "-s" or sys.argv[1] == "--search":
+        if sys.argv[1] == "--reindex":
+            save_index(re_index())
+        elif sys.argv[1] == "-s" or sys.argv[1] == "--search":
             ui(" ".join(sys.argv[2:]))
         elif sys.argv[1] == "-h" or sys.argv[1] == "--help":
             print (
 """nb is a very simple note-taking program.
 'nb <some text>' to make a note.
 'nb' to list, search, and edit notes.
-'nb -s|--search <query>' to start out with a query.""")
+'nb -s|--search <query>' to start out with a query.
+'nb --reindex' to re-index notes after they've been changed externally.""")
         else:
             mk_note(" ".join(sys.argv[1:]), load_index())
     else:
