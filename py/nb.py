@@ -43,6 +43,12 @@ def edit_note(n, index):
             add_to_index(f.read(), n, index)
             save_index(index)
 
+def delete_note(n, index):
+    remove_from_index(n, index)
+    path = os.path.join(nb_notes_dir(), "notes", n)
+    if os.path.exists(path):
+        os.remove(path)
+
 def search(query, index):
     query = [x for x in query.split(" ") if len(x) > 0]
     if len(query) == 0:
@@ -111,44 +117,52 @@ def ui(query=""):
         curses.cbreak()
         stdscr.keypad(1)
         first = True
+        edit_mode = False
         
         while True:
             if not first:
                 c = stdscr.getch()
-                if c == curses.KEY_ENTER or c == 10 or c == 13:
-                    if selection == 0:
-                        if len(query) > 0:
-                            mk_note(query, index)
-                            return
-                    else:
-                        if selection - 1 < len(results):
-                            curses.nocbreak()
-                            stdscr.keypad(0)
-                            curses.echo()
-                            curses.endwin()
-                            edit_note(results[selection - 1][0], index)
-                            stdscr = curses.initscr()
-                            curses.noecho()
-                            curses.cbreak()
-                            stdscr.keypad(1)
-                elif c > 0 and c < 256 and chr(c) in string.printable:
-                    query = query[:cursor] + chr(c) + query[cursor:]
-                    cursor += 1
-                elif c == curses.KEY_LEFT:
-                    cursor = max(0, cursor - 1)
-                elif c == curses.KEY_RIGHT:
-                    cursor = min(len(query), cursor + 1)
-                elif c == curses.KEY_UP:
-                    selection = max(0, selection - 1)
-                elif c == curses.KEY_DOWN:
-                    selection += 1
-                elif (c == curses.KEY_BACKSPACE or c == 127 or c == 8) and cursor > 0:
-                    query = query[:cursor - 1] + query[cursor:]
-                    cursor = cursor - 1
-                elif c == curses.KEY_EXIT or c == 27:
-                    return
+                if edit_mode:
+                    if c == curses.KEY_ENTER or c == 10 or c == 13 or c == ord('e'):
+                        curses.nocbreak()
+                        stdscr.keypad(0)
+                        curses.echo()
+                        curses.endwin()
+                        edit_note(results[selection - 1][0], index)
+                        stdscr = curses.initscr()
+                        curses.noecho()
+                        curses.cbreak()
+                        stdscr.keypad(1)
+                    elif c == ord('d'):
+                        delete_note(results[selection - 1][0], index)
+                    edit_mode = False
                 else:
-                    continue
+                    if c == curses.KEY_ENTER or c == 10 or c == 13:
+                        if selection == 0:
+                            if len(query) > 0:
+                                mk_note(query, index)
+                                return
+                        else:
+                            if selection - 1 < len(results):
+                                edit_mode = True
+                    elif c > 0 and c < 256 and chr(c) in string.printable:
+                        query = query[:cursor] + chr(c) + query[cursor:]
+                        cursor += 1
+                    elif c == curses.KEY_LEFT:
+                        cursor = max(0, cursor - 1)
+                    elif c == curses.KEY_RIGHT:
+                        cursor = min(len(query), cursor + 1)
+                    elif c == curses.KEY_UP:
+                        selection = max(0, selection - 1)
+                    elif c == curses.KEY_DOWN:
+                        selection += 1
+                    elif (c == curses.KEY_BACKSPACE or c == 127 or c == 8) and cursor > 0:
+                        query = query[:cursor - 1] + query[cursor:]
+                        cursor = cursor - 1
+                    elif c == curses.KEY_EXIT or c == 27:
+                        return
+                    else:
+                        continue
                     
             first = False
             height, width = stdscr.getmaxyx()
@@ -177,13 +191,11 @@ def ui(query=""):
                             x = 2
                             y += 1
                             stdscr.addstr(y, 0, " ", curses.A_REVERSE)
-                            y = stdscr.getyx()[0]
                         if t[t_index] in query_bits:
                             stdscr.addstr(y, x, t[t_index], curses.A_BOLD)
                         else:
                             stdscr.addstr(y, x, t[t_index])
                         x += len(t[t_index]) + 1
-                        y = stdscr.getyx()[0]
                         t_index += 1
                 else:
                     # Show excerpt.
@@ -228,7 +240,10 @@ def ui(query=""):
                 else:
                     stdscr.addstr(height - 2, 0, "Press enter to make new note or up/down arrow keys to select entries.", curses.A_REVERSE)
             else:
-                stdscr.addstr(height - 2, 0, "Use arrow keys to select entries. Press enter to edit or esc to exit.", curses.A_REVERSE)
+                if edit_mode:
+                    stdscr.addstr(height - 2, 0, "Press e or enter to edit, d to delete, and any other key to continue.", curses.A_REVERSE)
+                else:
+                    stdscr.addstr(height - 2, 0, "Use arrow keys to select entries. Press enter to edit or esc to exit.", curses.A_REVERSE)
             
             stdscr.move(cursor / (width - 2), (cursor + 2) % width)
             stdscr.refresh()
