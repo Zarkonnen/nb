@@ -274,8 +274,6 @@ def ui(query=""):
                 element += 1
             
             # Help
-            if len(autocompletes) > 0:
-                stdscr.addstr(height - 3, 0, autocompletes[0])
             if selection == 0:
                 if len(query) == 0:
                     stdscr.addstr(height - 2, 0, "Type to search or make new note. Press esc to exit.", curses.A_REVERSE)
