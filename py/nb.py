@@ -2,11 +2,13 @@
 
 import os, sys, datetime, hashlib, cPickle, string
 
+non_word_letters = string.whitespace + "".join([l for l in string.punctuation if not l == '#' and not l == '-'])
+
 def lex(text):
     t_start = 0
     t_end = 0
     while t_end < len(text):
-        if text[t_end] in string.whitespace or text[t_end] in string.punctuation:
+        if text[t_end] in non_word_letters:
             if t_start != t_end:
                 yield (text[t_start:t_end].lower(), t_start)
             t_start = t_end + 1
