@@ -201,57 +201,37 @@ def ui(query=""):
             results = load_results(search(query, index))
             selection = min(len(results), selection)
             for r in results:
-                n, t = r
-                t = t.split(" ")
-                t_joined = " ".join(t)
-                if selection == element:
-                    x = 2
-                    t_index = 0
-                    stdscr.addstr(y, 0, " ", curses.A_REVERSE)
-                    while t_index < len(t):
-                        if x > 2 and x + len(t[t_index]) + 1 >= width:
-                            x = 2
+                start_y = y
+                name, t = r
+                highlighted = [e for e in lex(t) if e[0] in query_bits]
+                t_index = 0
+                if selection != element and len(highlighted) > 0 and len(t) > width - 2:
+                    t_index = max(0, min(len(t) - (width - 2), highlighted[0][1] - width / 4))
+                x = 0
+                t_index_start = t_index
+                in_highlight = None
+                while t_index < len(t):
+                    for h in highlighted:
+                        if t_index == h[1]:
+                            in_highlight = h
+                    if in_highlight and t_index >= in_highlight[1] + len(in_highlight[0]):
+                        in_highlight = None
+                    if in_highlight:
+                        stdscr.addch(y, x + 2, ord(t[t_index]), curses.A_BOLD)
+                    else:
+                        stdscr.addch(y, x + 2, ord(t[t_index]))
+                    x += 1
+                    if x >= width - 2:
+                        if selection == element:
+                            x = 0
                             y += 1
-                            stdscr.addstr(y, 0, " ", curses.A_REVERSE)
-                        if t[t_index] in query_bits:
-                            stdscr.addstr(y, x, t[t_index], curses.A_BOLD)
                         else:
-                            stdscr.addstr(y, x, t[t_index])
-                        x += len(t[t_index]) + 1
-                        t_index += 1
-                else:
-                    # Show excerpt.
-                    x = 2
-                    t_index = 0
-                    # Find first highlighted word.
-                    if len(t_joined) > width:
-                        while t_index < len(t):
-                            if t[t_index] in query_bits:
-                                break
-                            t_index += 1
-                        if t_index == len(t):
-                            t_index = 0
-                        else:
-                            # Shift window leftwards for better ctx.
-                            end = len(t[t_index])
-                            while t_index > 0 and end + 1 + len(t[t_index - 1]) < width * 3 / 4:
-                                end += 1 + len(t[t_index - 1])
-                                t_index -= 1
-                    start_index = t_index
-                    while t_index < len(t) and x + len(t[t_index]) < width:
-                        if t[t_index] in query_bits:
-                            stdscr.addstr(y, x, t[t_index], curses.A_BOLD)
-                        else:
-                            stdscr.addstr(y, x, t[t_index])
-                        x += len(t[t_index]) + 1
-                        t_index += 1
-                    if t_index == start_index and len(t) > 0:
-                        stdscr.addnstr(y, 2, t[t_index], width - 3)
-                        y = stdscr.getyx()[0]
-                    if t_index < len(t):
-                        stdscr.addstr(y, width - 3, "...")
-                    if start_index > 0:
-                        stdscr.addstr(y, 2, "...")
+                            break
+                    t_index += 1
+                # Highlight selection
+                if selection == element:
+                    for yy in range(start_y, y + 1):
+                        stdscr.addstr(yy, 0, " ", curses.A_REVERSE)
                 y += 1
                 element += 1
             
