@@ -142,6 +142,10 @@ def ui(query=""):
         stdscr.keypad(1)
         first = True
         edit_mode = False
+        autocompletes = []
+        ac_tok = None
+        speculative_ac = False
+        cursor_tok = None
         
         while True:
             if not first:
@@ -169,6 +173,13 @@ def ui(query=""):
                         else:
                             if selection - 1 < len(results):
                                 edit_mode = True
+                    elif c == 9:
+                        # tab to autocomplete
+                        if speculative_ac and len(autocompletes) > 0:
+                            query = query[:cursor] + autocompletes[0][len(ac_tok):] + query[cursor:]
+                        elif cursor_tok:
+                            new_word = autocompletes[(autocompletes.index(cursor_tok[0]) + 1) % len(autocompletes)]
+                            query = query[:cursor_tok[1]] + new_word + query[cursor_tok[1] + len(cursor_tok[0]):]
                     elif c > 0 and c < 256 and chr(c) in string.printable:
                         query = query[:cursor] + chr(c) + query[cursor:]
                         cursor += 1
@@ -187,11 +198,36 @@ def ui(query=""):
                         return
                     else:
                         continue
-                    
+            
+            lexed_query = lex(query)
+            autocompletes = []
+            ac_tok = None
+            speculative_ac = False
+            cursor_tok = None
+            for tok in lexed_query:
+                if cursor > tok[1] and cursor <= tok[1] + len(tok[0]):
+                    if cursor == tok[1] + len(tok[0]):
+                        speculative_ac = True
+                    ac_tok = tok[0][:cursor - tok[1]]
+                    cursor_tok = tok
+            if ac_tok:
+                autocompletes = [w for w in index.keys() if len(w) > len(ac_tok) and w[:len(ac_tok)] == ac_tok]
+                if not cursor_tok[0] in autocompletes:
+                    autocompletes.append(cursor_tok[0])
+            
             first = False
             height, width = stdscr.getmaxyx()
             stdscr.clear()
-            stdscr.addstr(0, 2, query)
+            
+            if len(autocompletes) > 0 and speculative_ac:
+                stdscr.addstr(0, 2, query[:cursor], curses.A_BOLD)
+                y, x = stdscr.getyx()
+                stdscr.addstr(y, x, autocompletes[0][len(ac_tok):])
+                y, x = stdscr.getyx()
+                stdscr.addstr(y, x, query[cursor:], curses.A_BOLD)
+            else:
+                stdscr.addstr(0, 2, query, curses.A_BOLD)
+            
             y = stdscr.getyx()[0] + 1
             
             element = 0
@@ -238,6 +274,8 @@ def ui(query=""):
                 element += 1
             
             # Help
+            if len(autocompletes) > 0:
+                stdscr.addstr(height - 3, 0, autocompletes[0])
             if selection == 0:
                 if len(query) == 0:
                     stdscr.addstr(height - 2, 0, "Type to search or make new note. Press esc to exit.", curses.A_REVERSE)
