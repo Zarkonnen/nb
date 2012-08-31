@@ -154,12 +154,12 @@ def ui(query=""):
             height, width = stdscr.getmaxyx()
             stdscr.clear()
             stdscr.addstr(0, 2, query)
+            y = stdscr.getyx()[0] + 1
             
             element = 0
             if selection == element:
                 stdscr.addstr(0, selection, ">", curses.A_REVERSE)
             
-            y = 1
             element += 1
             query_bits = query.split(" ")
             results = load_results(search(query, index))
@@ -177,11 +177,13 @@ def ui(query=""):
                             x = 2
                             y += 1
                             stdscr.addstr(y, 0, " ", curses.A_REVERSE)
+                            y = stdscr.getyx()[0]
                         if t[t_index] in query_bits:
                             stdscr.addstr(y, x, t[t_index], curses.A_BOLD)
                         else:
                             stdscr.addstr(y, x, t[t_index])
                         x += len(t[t_index]) + 1
+                        y = stdscr.getyx()[0]
                         t_index += 1
                 else:
                     # Show excerpt.
@@ -209,6 +211,9 @@ def ui(query=""):
                             stdscr.addstr(y, x, t[t_index])
                         x += len(t[t_index]) + 1
                         t_index += 1
+                    if t_index == start_index and len(t) > 0:
+                        stdscr.addnstr(y, 2, t[t_index], width - 3)
+                        y = stdscr.getyx()[0]
                     if t_index < len(t):
                         stdscr.addstr(y, width - 3, "...")
                     if start_index > 0:
@@ -225,7 +230,7 @@ def ui(query=""):
             else:
                 stdscr.addstr(height - 2, 0, "Use arrow keys to select entries. Press enter to edit or esc to exit.", curses.A_REVERSE)
             
-            stdscr.move(0, cursor + 2)
+            stdscr.move(cursor / (width - 2), (cursor + 2) % width)
             stdscr.refresh()
     finally:
         curses.nocbreak()
