@@ -271,6 +271,10 @@ def ui(query=""):
                 if r_index < results_offset:
                     element += 1
                     continue
+                if y == height - 3 and r != results[-1]:
+                    stdscr.addstr(y, 0, "v" * width)
+                    stdscr.addstr(y, 2, " " + str(len(results) - r_index) + " ")
+                    break
                 start_y = y
                 name, t = r
                 highlighted = [e for e in lex(t) if e[0] in query_bits]
@@ -286,7 +290,11 @@ def ui(query=""):
                         y += 1
                         t_index += 1
                         continue
+                    if y >= height - 3 and r != results[-1]:
+                        y = height - 4
+                        break
                     if y >= height - 2:
+                        y = height - 3
                         break
                     for h in highlighted:
                         if t_index == h[1]:
