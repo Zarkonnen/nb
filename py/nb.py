@@ -48,6 +48,12 @@ def editor_cmd():
         return ed
     return "vi"
 
+def view_cmd():
+    v = os.getenv("NB_NOTES_VIEWER")
+    if v:
+        return v
+    return "less -e"
+
 def edit_note(n, index):
     path = os.path.join(nb_notes_dir(), "notes", n)
     if os.path.exists(path):
@@ -56,6 +62,11 @@ def edit_note(n, index):
         with open(path, 'r') as f:
             add_to_index(f.read(), n, index)
             save_index(index)
+            
+def view_note(n):
+    path = os.path.join(nb_notes_dir(), "notes", n)
+    if os.path.exists(path):
+        os.system(view_cmd() + " " + path)
 
 def delete_note(n, index):
     remove_from_index(n, index)
@@ -180,6 +191,16 @@ def ui(query=""):
                         stdscr.keypad(1)
                     elif c == ord('d'):
                         delete_note(results[selection - 1][0], index)
+                    elif c == ord('v'):
+                        curses.nocbreak()
+                        stdscr.keypad(0)
+                        curses.echo()
+                        curses.endwin()
+                        view_note(results[selection - 1][0])
+                        stdscr = curses.initscr()
+                        curses.noecho()
+                        curses.cbreak()
+                        stdscr.keypad(1)
                     edit_mode = False
                 else:
                     if c == curses.KEY_ENTER or c == 10 or c == 13:
@@ -332,7 +353,7 @@ def ui(query=""):
                     stdscr.addstr(height - 2, 0, "Press enter to make new note or up/down arrow keys to select entries.", curses.A_REVERSE)
             else:
                 if edit_mode:
-                    stdscr.addstr(height - 2, 0, "Press e or enter to edit, d to delete, and any other key to continue.", curses.A_REVERSE)
+                    stdscr.addstr(height - 2, 0, "Press e or enter to edit, v to view, d to delete, and any other key to continue.", curses.A_REVERSE)
                 else:
                     stdscr.addstr(height - 2, 0, "Use arrow keys to select entries. Press enter to edit or esc to exit.", curses.A_REVERSE)
             
