@@ -128,6 +128,23 @@ def re_index():
         with open(os.path.join(nd, f_name), 'r') as f:
             add_to_index(f.read(), f_name, index)
     return index
+    
+def entry_height(t, display_width):
+    x = 0
+    y = 0
+    t_index = 0
+    while t_index < len(t):
+        if t[t_index] == "\n":
+            x = 0
+            y += 1
+            t_index += 1
+            continue
+        x += 1
+        if x >= display_width:
+            x = 0
+            y += 1
+        t_index += 1
+    return y + 1
 
 def ui(query=""):
     import curses
@@ -216,8 +233,8 @@ def ui(query=""):
                     autocompletes.append(cursor_tok[0])
             
             first = False
-            height, width = stdscr.getmaxyx()
             stdscr.clear()
+            height, width = stdscr.getmaxyx()
             
             if len(autocompletes) > 0 and speculative_ac:
                 stdscr.addstr(0, 2, query[:cursor], curses.A_BOLD)
@@ -238,7 +255,22 @@ def ui(query=""):
             query_bits = query.split(" ")
             results = load_results(search(query, index))
             selection = min(len(results), selection)
+            full_h = entry_height(results[selection - 1][1], width) if selection > 0 else 1
+            results_h = full_h + len(results) - 1
+            results_offset = 0;
+            if results_h >= height - 4:
+                results_offset = max(0, min(selection - 2, results_h - height + 4))
+            if results_offset > 0:
+                stdscr.addstr(y, 0, "^" * width)
+                stdscr.addstr(y, 2, " " + str(results_offset) + " ")
+                y += 1
+            
+            r_index = -1
             for r in results:
+                r_index += 1
+                if r_index < results_offset:
+                    element += 1
+                    continue
                 start_y = y
                 name, t = r
                 highlighted = [e for e in lex(t) if e[0] in query_bits]
@@ -249,6 +281,13 @@ def ui(query=""):
                 t_index_start = t_index
                 in_highlight = None
                 while t_index < len(t):
+                    if t[t_index] == "\n" and selection == element:
+                        x = 0
+                        y += 1
+                        t_index += 1
+                        continue
+                    if y >= height - 2:
+                        break
                     for h in highlighted:
                         if t_index == h[1]:
                             in_highlight = h
@@ -257,7 +296,10 @@ def ui(query=""):
                     if in_highlight:
                         stdscr.addch(y, x + 2, ord(t[t_index]), curses.A_BOLD)
                     else:
-                        stdscr.addch(y, x + 2, ord(t[t_index]))
+                        try:
+                            stdscr.addch(y, x + 2, ord(t[t_index]))
+                        except:
+                            stdscr.addstr(0, 0, "y=" + str(y) + " x=" + str(x) + " h=\"" + str(height) + "\"")
                     x += 1
                     if x >= width - 2:
                         if selection == element:
@@ -266,6 +308,7 @@ def ui(query=""):
                         else:
                             break
                     t_index += 1
+                    
                 # Highlight selection
                 if selection == element:
                     for yy in range(start_y, y + 1):
