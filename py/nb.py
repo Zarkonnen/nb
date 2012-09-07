@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 
-import os, sys, datetime, hashlib, cPickle, string
+import os, sys, datetime, hashlib, cPickle, string, copy
+
+class Index:
+    def __init__(self):
+        self.file_to_mod_timestamp = {}
+        self.word_to_mentions = {}
 
 non_word_letters = string.whitespace + "".join([l for l in string.punctuation if not l == '#' and not l == '-'])
 
@@ -34,11 +39,12 @@ def mk_note(text, index):
     nd = os.path.join(nb_notes_dir(), "notes")
     if not os.path.exists(nd):
         os.makedirs(nd)
-    with open(os.path.join(nd, name), 'w') as f:
+    p = os.path.join(nd, name)
+    with open(p, 'w') as f:
         f.write(text)
-    add_to_index(text, name, index)
+    add_to_index(text, name, os.path.getmtime(p), index)
     save_index(index)
-
+    
 def editor_cmd():
     ed = os.getenv("NB_NOTES_EDITOR")
     if ed:
@@ -60,7 +66,7 @@ def edit_note(n, index):
         remove_from_index(n, index)
         os.system(editor_cmd() + " " + path)
         with open(path, 'r') as f:
-            add_to_index(f.read(), n, index)
+            add_to_index(f.read(), n, os.path.getmtime(path), index)
             save_index(index)
             
 def view_note(n):
@@ -78,19 +84,19 @@ def search(query, index):
     query = [x.lower() for x in query.split(" ") if len(x) > 0]
     if len(query) == 0:
         return latest_n_entries(index, 30)
-    if not query[0] in index:
+    if not query[0] in index.word_to_mentions:
         return set()
-    return refine_search(query[1:], index, set([t[1] for t in index[query[0]]]))
+    return refine_search(query[1:], index, set([t[1] for t in index.word_to_mentions[query[0]]]))
 
 def latest_n_entries(index, n):
-    return sorted(list(set(sum([[t[1] for t in w] for w in index.values()], []))))[::-1][:n]
+    return sorted(list(set(sum([[t[1] for t in w] for w in index.word_to_mentions.values()], []))))[::-1][:n]
 
 def refine_search(query, index, result):
     if len(query) == 0:
         return result
-    if not query[0] in index:
+    if not query[0] in index.word_to_mentions:
         return set()
-    return refine_search(query[1:], index, result.intersection([t[1] for t in index[query[0]]]))
+    return refine_search(query[1:], index, result.intersection([t[1] for t in index.word_to_mentions[query[0]]]))
 
 def load_results(results):
     results = sorted(list(results))[::-1]
@@ -102,42 +108,97 @@ def load_results(results):
                 r2.append((n, f.read()))
     return r2
     
-def add_to_index(text, f_name, index):
+def add_to_index(text, f_name, m_time, index):
+    index.file_to_mod_timestamp[f_name] = m_time
     for word, offset in lex(text):
-        if not word in index:
-            index[word] = []
-        index[word].append((offset, f_name))
+        if not word in index.word_to_mentions:
+            index.word_to_mentions[word] = []
+        index.word_to_mentions[word].append((offset, f_name))
 
 def remove_from_index(f_name, index):
-    for word in index.keys():
-        index[word] = [t for t in index[word] if not t[1] == f_name]
+    for word in index.word_to_mentions.keys():
+        index.word_to_mentions[word] = [t for t in index.word_to_mentions[word] if not t[1] == f_name]
+    del index.file_to_mod_timestamp[f_name]
 
 def load_index():
-    index_f = os.path.join(nb_notes_dir(), "index_py.pickle")
+    index_f = os.path.join(nb_notes_dir(), "index.txt")
+    index = Index()
     if not os.path.exists(index_f):
-        return {}
+        return index
     else:
         with open(index_f, 'rb') as f:
-            return cPickle.load(f)
+            index = Index()
+            l = f.readline()
+            if l != "nb py 1\n":
+                raise "Unknown index format: " + l
+            # Read list of files and mod timestamps
+            n_list = []
+            l = f.readline()
+            while l != '\n':
+                n = l[:-1]
+                m = float(f.readline()[:-1])
+                n_list.append(n)
+                index.file_to_mod_timestamp[n] = m
+                l = f.readline()
+            # Read index
+            l = f.readline()
+            while l != '':
+                word = l[:-1]
+                mentions = []
+                index.word_to_mentions[word] = mentions
+                l = f.readline()
+                while l != '\n':
+                    n = n_list[int(l[:-1])]
+                    offset = int(f.readline()[:-1])
+                    mentions.append((offset, n))
+                    l = f.readline()
+                l = f.readline()
+            return index
 
 def save_index(index):
     nd = nb_notes_dir()
     if not os.path.exists(nd):
         os.makedirs(nd)
-    index_f = os.path.join(nd, "index_py.pickle")
-    with open(index_f, 'wb') as f:
-        cPickle.dump(index, f)
+    index_f = os.path.join(nd, "index.txt")
+    with open(index_f, 'w') as f:
+        # Header
+        f.write('nb py 1\n')
+        # Files and mod timestamps
+        n_m_list = list(index.file_to_mod_timestamp.iteritems())
+        n_list = [x[0] for x in n_m_list]
+        for n, m in n_m_list:
+            f.write(n)
+            f.write('\n')
+            f.write(str(m))
+            f.write('\n')
+        f.write('\n') # Separator
+        for word, mention_list in index.word_to_mentions.iteritems():
+            f.write(word)
+            f.write('\n')
+            for mention in mention_list:
+                f.write(str(n_list.index(mention[1])))
+                f.write('\n')
+                f.write(str(mention[0]))
+                f.write('\n')
+            f.write('\n')
 
 def re_index():
-    index = {}
+    index = Index()
     nd = os.path.join(nb_notes_dir(), "notes")
     if not os.path.exists(nd):
         os.makedirs(nd)
     for f_name in os.listdir(nd):
         if f_name[0] == ".":
             continue
-        with open(os.path.join(nd, f_name), 'r') as f:
-            add_to_index(f.read(), f_name, index)
+        p = os.path.join(nd, f_name)
+        with open(p, 'r') as f:
+            add_to_index(f.read(), f_name, os.path.getmtime(p), index)
+    return index
+
+def clone_index(index):
+    return copy.deepcopy(index)
+
+def re_index_if_modified(index):
     return index
     
 def entry_height(t, display_width):
@@ -249,7 +310,7 @@ def ui(query=""):
                     ac_tok = tok[0][:cursor - tok[1]]
                     cursor_tok = tok
             if ac_tok:
-                autocompletes = [w for w in index.keys() if len(w) > len(ac_tok) and w[:len(ac_tok)] == ac_tok]
+                autocompletes = [w for w in index.word_to_mentions.keys() if len(w) > len(ac_tok) and w[:len(ac_tok)] == ac_tok]
                 if not cursor_tok[0] in autocompletes:
                     autocompletes.append(cursor_tok[0])
             
