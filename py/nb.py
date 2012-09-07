@@ -118,6 +118,8 @@ def add_to_index(text, f_name, m_time, index):
 def remove_from_index(f_name, index):
     for word in index.word_to_mentions.keys():
         index.word_to_mentions[word] = [t for t in index.word_to_mentions[word] if not t[1] == f_name]
+        if len(index.word_to_mentions[word]) == 0:
+            del index.word_to_mentions[word]
     del index.file_to_mod_timestamp[f_name]
 
 def load_index():
@@ -199,6 +201,25 @@ def clone_index(index):
     return copy.deepcopy(index)
 
 def re_index_if_modified(index):
+    nd = os.path.join(nb_notes_dir(), "notes")
+    if not os.path.exists(nd):
+        os.makedirs(nd)
+    for f_name in os.listdir(nd):
+        if f_name[0] == ".":
+            continue
+        p = os.path.join(nd, f_name)
+        if not f_name in index.file_to_mod_timestamp:
+            with open(p, 'r') as f:
+                add_to_index(f.read(), f_name, os.path.getmtime(p), index)
+        else:
+            if index.file_to_mod_timestamp[f_name] < os.path.getmtime(p):
+                remove_from_index(f_name, index)
+                with open(p, 'r') as f:
+                    add_to_index(f.read(), f_name, os.path.getmtime(p), index)
+    for f_name in index.file_to_mod_timestamp.keys():
+        p = os.path.join(nd, f_name)
+        if not os.path.exists(p):
+            remove_from_index(f_name, index)
     return index
     
 def entry_height(t, display_width):
@@ -224,6 +245,7 @@ def ui(query=""):
     try:
         results = []
         index = load_index()
+        re_index_if_modified(index) # qqDPS
         cursor = len(query)
         selection = 0
         curses.noecho()
