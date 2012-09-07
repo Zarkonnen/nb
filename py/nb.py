@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys, datetime, hashlib, cPickle, string, copy, threading
+import os, sys, datetime, hashlib, cPickle, string, copy, threading, subprocess, shlex
 
 class Index:
     def __init__(self):
@@ -201,6 +201,7 @@ def clone_index(index):
     return copy.deepcopy(index)
 
 def re_index_if_modified(index):
+    changed = False
     nd = os.path.join(nb_notes_dir(), "notes")
     if not os.path.exists(nd):
         os.makedirs(nd)
@@ -211,23 +212,33 @@ def re_index_if_modified(index):
         if not f_name in index.file_to_mod_timestamp:
             with open(p, 'r') as f:
                 add_to_index(f.read(), f_name, os.path.getmtime(p), index)
+                changed = True
         else:
             if index.file_to_mod_timestamp[f_name] < os.path.getmtime(p):
                 remove_from_index(f_name, index)
                 with open(p, 'r') as f:
                     add_to_index(f.read(), f_name, os.path.getmtime(p), index)
+                    changed = True
     for f_name in index.file_to_mod_timestamp.keys():
         p = os.path.join(nd, f_name)
         if not os.path.exists(p):
             remove_from_index(f_name, index)
-    return index
-    
+            changed = True
+    return changed
+
+def pre_read_cmd():
+    return os.getenv("NB_PRE_READ")
+
 class Reindexer:
     def __init__(self, old_index):
         self.old_index = old_index
     def __call__(self):
+        pre_read = pre_read_cmd()
+        if pre_read:
+            subprocess.call(shlex.split(pre_read))
         self.new_index = clone_index(self.old_index)
-        re_index_if_modified(self.new_index)
+        if re_index_if_modified(self.new_index):
+            save_index(self.new_index)
     
 def entry_height(t, display_width):
     x = 0
@@ -250,6 +261,7 @@ def ui(query=""):
     import curses
     stdscr = curses.initscr()
     try:
+        selected_result = None
         results = []
         index = load_index()
         reindexer = Reindexer(index)
@@ -269,6 +281,7 @@ def ui(query=""):
         cursor_tok = None
         
         while True:
+            result_lock = True
             if not first:
                 c = stdscr.getch()
                 if c == -1:
@@ -327,8 +340,10 @@ def ui(query=""):
                             cursor = min(len(query), cursor + 1)
                         elif c == curses.KEY_UP:
                             selection = max(0, selection - 1)
+                            result_lock = False
                         elif c == curses.KEY_DOWN:
                             selection += 1
+                            result_lock = False
                         elif (c == curses.KEY_BACKSPACE or c == 127 or c == 8) and cursor > 0:
                             query = query[:cursor - 1] + query[cursor:]
                             cursor = cursor - 1
@@ -374,7 +389,11 @@ def ui(query=""):
             element += 1
             query_bits = query.split(" ")
             results = load_results(search(query, index))
+            if selected_result and result_lock and selected_result in results:
+                selection = results.index(selected_result) + 1
             selection = min(len(results), selection)
+            selected_result = results[selection - 1] if selection > 0 else None
+            
             full_h = entry_height(results[selection - 1][1], width) if selection > 0 else 1
             results_h = full_h + len(results) - 1
             results_offset = 0;
