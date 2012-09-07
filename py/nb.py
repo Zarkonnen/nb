@@ -280,6 +280,14 @@ def ui(query=""):
         speculative_ac = False
         cursor_tok = None
         
+        def wait_for_editability():
+            if reindexer_thread:
+                stdscr.clear()
+                stdscr.addstr(2, 0, " " * stdscr.getmaxyx()[1], curses.A_REVERSE)
+                stdscr.addstr(2, 2, "Waiting for reindex to complete...", curses.A_REVERSE)
+                stdscr.refresh()
+                reindexer_thread.join()
+                
         while True:
             result_lock = True
             if not first:
@@ -291,6 +299,7 @@ def ui(query=""):
                 else:
                     if edit_mode:
                         if c == curses.KEY_ENTER or c == 10 or c == 13 or c == ord('e'):
+                            wait_for_editability()
                             curses.nocbreak()
                             stdscr.keypad(0)
                             curses.echo()
@@ -302,6 +311,7 @@ def ui(query=""):
                             stdscr.timeout(50)
                             stdscr.keypad(1)
                         elif c == ord('d'):
+                            wait_for_editability()
                             delete_note(results[selection - 1][0], index)
                         elif c == ord('v'):
                             curses.nocbreak()
@@ -319,6 +329,7 @@ def ui(query=""):
                         if c == curses.KEY_ENTER or c == 10 or c == 13:
                             if selection == 0:
                                 if len(query) > 0:
+                                    wait_for_editability()
                                     mk_note(query, index)
                                     return
                             else:
@@ -483,6 +494,8 @@ def ui(query=""):
         stdscr.keypad(0)
         curses.echo()
         curses.endwin()
+        if reindexer_thread != None and not reindexer_thread.isAlive():
+            print "Waiting for reindex to complete..."
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
