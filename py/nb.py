@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys, datetime, hashlib, cPickle, string, copy
+import os, sys, datetime, hashlib, cPickle, string, copy, threading
 
 class Index:
     def __init__(self):
@@ -222,6 +222,13 @@ def re_index_if_modified(index):
             remove_from_index(f_name, index)
     return index
     
+class Reindexer:
+    def __init__(self, old_index):
+        self.old_index = old_index
+    def __call__(self):
+        self.new_index = clone_index(self.old_index)
+        re_index_if_modified(self.new_index)
+    
 def entry_height(t, display_width):
     x = 0
     y = 0
@@ -245,11 +252,14 @@ def ui(query=""):
     try:
         results = []
         index = load_index()
-        re_index_if_modified(index) # qqDPS
+        reindexer = Reindexer(index)
+        reindexer_thread = threading.Thread(target=reindexer, name="reindexer")
+        reindexer_thread.start()
         cursor = len(query)
         selection = 0
         curses.noecho()
         curses.cbreak()
+        stdscr.timeout(50)
         stdscr.keypad(1)
         first = True
         edit_mode = False
@@ -261,65 +271,71 @@ def ui(query=""):
         while True:
             if not first:
                 c = stdscr.getch()
-                if edit_mode:
-                    if c == curses.KEY_ENTER or c == 10 or c == 13 or c == ord('e'):
-                        curses.nocbreak()
-                        stdscr.keypad(0)
-                        curses.echo()
-                        curses.endwin()
-                        edit_note(results[selection - 1][0], index)
-                        stdscr = curses.initscr()
-                        curses.noecho()
-                        curses.cbreak()
-                        stdscr.keypad(1)
-                    elif c == ord('d'):
-                        delete_note(results[selection - 1][0], index)
-                    elif c == ord('v'):
-                        curses.nocbreak()
-                        stdscr.keypad(0)
-                        curses.echo()
-                        curses.endwin()
-                        view_note(results[selection - 1][0])
-                        stdscr = curses.initscr()
-                        curses.noecho()
-                        curses.cbreak()
-                        stdscr.keypad(1)
-                    edit_mode = False
+                if c == -1:
+                    if reindexer_thread != None and not reindexer_thread.isAlive():
+                        index = reindexer.new_index
+                        reindexer_thread = None
                 else:
-                    if c == curses.KEY_ENTER or c == 10 or c == 13:
-                        if selection == 0:
-                            if len(query) > 0:
-                                mk_note(query, index)
-                                return
-                        else:
-                            if selection - 1 < len(results):
-                                edit_mode = True
-                    elif c == 9:
-                        # tab to autocomplete
-                        if speculative_ac and len(autocompletes) > 0:
-                            query = query[:cursor] + autocompletes[0][len(ac_tok):] + query[cursor:]
-                        elif cursor_tok:
-                            new_word = autocompletes[(autocompletes.index(cursor_tok[0]) + 1) % len(autocompletes)]
-                            query = query[:cursor_tok[1]] + new_word + query[cursor_tok[1] + len(cursor_tok[0]):]
-                    elif c > 0 and c < 256 and chr(c) in string.printable:
-                        query = query[:cursor] + chr(c) + query[cursor:]
-                        cursor += 1
-                    elif c == curses.KEY_LEFT:
-                        cursor = max(0, cursor - 1)
-                    elif c == curses.KEY_RIGHT:
-                        cursor = min(len(query), cursor + 1)
-                    elif c == curses.KEY_UP:
-                        selection = max(0, selection - 1)
-                    elif c == curses.KEY_DOWN:
-                        selection += 1
-                    elif (c == curses.KEY_BACKSPACE or c == 127 or c == 8) and cursor > 0:
-                        query = query[:cursor - 1] + query[cursor:]
-                        cursor = cursor - 1
-                    elif c == curses.KEY_EXIT or c == 27:
-                        return
+                    if edit_mode:
+                        if c == curses.KEY_ENTER or c == 10 or c == 13 or c == ord('e'):
+                            curses.nocbreak()
+                            stdscr.keypad(0)
+                            curses.echo()
+                            curses.endwin()
+                            edit_note(results[selection - 1][0], index)
+                            stdscr = curses.initscr()
+                            curses.noecho()
+                            curses.cbreak()
+                            stdscr.timeout(50)
+                            stdscr.keypad(1)
+                        elif c == ord('d'):
+                            delete_note(results[selection - 1][0], index)
+                        elif c == ord('v'):
+                            curses.nocbreak()
+                            stdscr.keypad(0)
+                            curses.echo()
+                            curses.endwin()
+                            view_note(results[selection - 1][0])
+                            stdscr = curses.initscr()
+                            curses.noecho()
+                            curses.cbreak()
+                            stdscr.timeout(50)
+                            stdscr.keypad(1)
+                        edit_mode = False
                     else:
-                        continue
-            
+                        if c == curses.KEY_ENTER or c == 10 or c == 13:
+                            if selection == 0:
+                                if len(query) > 0:
+                                    mk_note(query, index)
+                                    return
+                            else:
+                                if selection - 1 < len(results):
+                                    edit_mode = True
+                        elif c == 9:
+                            # tab to autocomplete
+                            if speculative_ac and len(autocompletes) > 0:
+                                query = query[:cursor] + autocompletes[0][len(ac_tok):] + query[cursor:]
+                            elif cursor_tok:
+                                new_word = autocompletes[(autocompletes.index(cursor_tok[0]) + 1) % len(autocompletes)]
+                                query = query[:cursor_tok[1]] + new_word + query[cursor_tok[1] + len(cursor_tok[0]):]
+                        elif c > 0 and c < 256 and chr(c) in string.printable:
+                            query = query[:cursor] + chr(c) + query[cursor:]
+                            cursor += 1
+                        elif c == curses.KEY_LEFT:
+                            cursor = max(0, cursor - 1)
+                        elif c == curses.KEY_RIGHT:
+                            cursor = min(len(query), cursor + 1)
+                        elif c == curses.KEY_UP:
+                            selection = max(0, selection - 1)
+                        elif c == curses.KEY_DOWN:
+                            selection += 1
+                        elif (c == curses.KEY_BACKSPACE or c == 127 or c == 8) and cursor > 0:
+                            query = query[:cursor - 1] + query[cursor:]
+                            cursor = cursor - 1
+                        elif c == curses.KEY_EXIT or c == 27:
+                            return
+                        else:
+                            continue
             lexed_query = lex(query)
             autocompletes = []
             ac_tok = None
@@ -439,7 +455,8 @@ def ui(query=""):
                     stdscr.addstr(height - 2, 0, "Press e or enter to edit, v to view, d to delete, and any other key to continue.", curses.A_REVERSE)
                 else:
                     stdscr.addstr(height - 2, 0, "Use arrow keys to select entries. Press enter to edit or esc to exit.", curses.A_REVERSE)
-            
+            if reindexer_thread != None:
+                stdscr.addstr(height - 1, width - len("Reindexing...") - 1, "Reindexing...")
             stdscr.move(cursor / (width - 2), (cursor + 2) % width)
             stdscr.refresh()
     finally:
